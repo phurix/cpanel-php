@@ -1,6 +1,9 @@
 <?php namespace Gufy\CpanelPhp;
 
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\ClientException;
+use Psr\Http\Message\ResponseInterface;
+use RuntimeException;
 
 /**
  * cPanel/WHM API
@@ -68,6 +71,11 @@ class Cpanel implements CpanelInterface
     protected $connection_timeout = 2;
 
     /**
+     * @var Client
+     */
+    private $client;
+
+    /**
      * Class constructor. The options must be contain username, host, and password.
      *
      * @param array $options options that will be passed and processed
@@ -75,8 +83,11 @@ class Cpanel implements CpanelInterface
      * @return self
      * @since v1.0.0
      */
-    public function __construct($options = array())
+    public function __construct($options = [], Client $client = null)
     {
+        if ($client) {
+            $this->client = $client;
+        }
         if (!empty($options)) {
             if (!empty($options['auth_type'])) {
                 $this->setAuthType($options['auth_type']);
@@ -86,6 +97,7 @@ class Cpanel implements CpanelInterface
                 ->setHost($options['host'])
                 ->setAuthorization($options['username'], $options['password']);
         }
+        return $this;
     }
 
     /**
@@ -111,19 +123,19 @@ class Cpanel implements CpanelInterface
      * @param array $options list of options that will be checked
      *
      * @return self
-     * @throws \Exception
+     * @throws \InvalidArgumentException
      * @since v1.0.0
      */
     private function checkOptions($options)
     {
         if (empty($options['username'])) {
-            throw new \Exception('Username is not set', 2301);
+            throw new \InvalidArgumentException('Username is not set', 2301);
         }
         if (empty($options['password'])) {
-            throw new \Exception('Password or hash is not set', 2302);
+            throw new \InvalidArgumentException('Password or hash is not set', 2302);
         }
         if (empty($options['host'])) {
-            throw new \Exception('CPanel Host is not set', 2303);
+            throw new \InvalidArgumentException('CPanel Host is not set', 2303);
         }
 
         return $this;
@@ -330,7 +342,7 @@ class Cpanel implements CpanelInterface
      * @param array $arguments list of parameters that will be attached.
      * @param bool   $throw defaults to false, if set to true rethrow every exception.
      *
-     * @throws Exception|GuzzleHttp\Exception\ClientException
+     * @throws RuntimeException|ClientException
      *
      * @return array results of API call
      *
@@ -338,30 +350,17 @@ class Cpanel implements CpanelInterface
      */
     protected function runQuery($action, $arguments = [], $throw = false)
     {
-        $host = $this->getHost();
-        $client = new Client(['base_uri' => $host]);
-        try{
-          $response = $client->post('/json-api/' . $action, [
-              'headers' => $this->createHeader(),
-              'verify' => false,
-              'query' => $arguments,
-              'timeout' => $this->getTimeout(),
-              'connect_timeout' => $this->getConnectionTimeout()
-          ]);
-
-            if (($decodedBody = json_decode($response->getBody(), true)) === false) {
-                throw new \Exception(json_last_error_msg(), json_last_error());
+        $client = $this->getClient();
+        try {
+            $response = $this->getResponse($client, $action, $arguments);
+        } catch (ClientException $e) {
+            if ($throw) {
+                throw $e;
             }
-
-            return $decodedBody;
+            $response = $e->getResponse();
         }
-        catch(\GuzzleHttp\Exception\ClientException $e)
-        {
-          if ($throw) {
-            throw $e; 
-          }
-          return $e->getMessage();
-        }
+        $json = (string)$response->getBody();
+        return $this->jsonDecode($json);
     }
 
     /**
@@ -411,5 +410,43 @@ class Cpanel implements CpanelInterface
         $response = $this->runQuery($action, $params);
 
         return $response;
+    }
+
+    /**
+     * @param Client $client
+     * @param string $action
+     * @param array $arguments
+     * @return ResponseInterface
+     */
+    protected function getResponse(Client $client, $action, array $arguments = [])
+    {
+        $host = $this->getHost();
+        return $client->post($host . '/json-api/' . $action, [
+            'headers' => $this->createHeader(),
+            'verify' => false,
+            'query' => $arguments,
+            'timeout' => $this->getTimeout(),
+            'connect_timeout' => $this->getConnectionTimeout()
+        ]);
+    }
+
+    /**
+     * @return Client
+     */
+    protected function getClient()
+    {
+        return $this->client ?: new Client();
+    }
+
+    /**
+     * @param string $json
+     * @return mixed
+     */
+    protected function jsonDecode($json)
+    {
+        if (($decodedBody = json_decode($json, true)) === false) {
+            throw new RuntimeException(json_last_error_msg(), json_last_error());
+        }
+        return $decodedBody;
     }
 }
