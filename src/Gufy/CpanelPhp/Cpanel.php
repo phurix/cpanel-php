@@ -22,68 +22,55 @@ class Cpanel implements CpanelInterface
     use CpanelShortcuts;
 
     /**
-     * @var string Username of your whm server. Must be string
+     * @var string[] Sets of headers that will be sent at request.
      *
      * @since v1.0.0
      */
-    private $username;
-
+    protected array $headers = [];
     /**
-     * @var string Password or long hash of your whm server.
+     * Query timeout (Guzzle option)
      *
      * @since v1.0.0
      */
-    private $password;
-
+    protected int $timeout = 10;
     /**
-     * @var string Authentication type you want to use. You can set as 'hash' or 'password'.
+     * Connection timeout (Guzzle option)
      *
      * @since v1.0.0
      */
-    private $auth_type;
-
+    protected int $connection_timeout = 2;
     /**
-     * @var string Host of your whm server. You must set it with full host with its port and protocol.
+     * Username of your whm server. Must be string
      *
      * @since v1.0.0
      */
-    private $host;
-
+    private string $username;
     /**
-     * @var string Sets of headers that will be sent at request.
+     * Password or long hash of your whm server.
      *
      * @since v1.0.0
      */
-    protected $headers = array();
-
+    private string $password;
     /**
-     * @var integer Query timeout (Guzzle option)
+     * Authentication type you want to use. You can set as 'hash' or 'password'.
      *
      * @since v1.0.0
      */
-    protected $timeout = 10;
-
+    private string $auth_type;
     /**
-     * @var integer Connection timeout (Guzzle option)
+     * Host of your whm server. You must set it with full host with its port and protocol.
      *
      * @since v1.0.0
      */
-    protected $connection_timeout = 2;
+    private string $host;
+    private ?Client $client = null;
 
     /**
-     * @var Client
-     */
-    private $client;
-
-    /**
-     * Class constructor. The options must be contain username, host, and password.
-     *
+     * Class constructor. The options must contain username, host, and password.
      * @param array $options options that will be passed and processed
-     *
-     * @return self
      * @since v1.0.0
      */
-    public function __construct($options = [], Client $client = null)
+    public function __construct(array $options = [], Client $client = null)
     {
         if ($client) {
             $this->client = $client;
@@ -101,32 +88,27 @@ class Cpanel implements CpanelInterface
     }
 
     /**
-     * Magic method who will call the CPanel/WHM Api.
+     * set authorization for access.
+     * It only set 'username' and 'password'.
      *
-     * @param string $function function name that will be called
-     * @param array $arguments parameter that should be passed when calling API function
-     *
-     * @return array result of called functions
-     *
+     * @param string $username Username of your whm server.
+     * @param string $password Password or long hash of your whm server.
      * @since v1.0.0
      */
-    public function __call($function, $arguments)
+    public function setAuthorization(string $username, string $password): Cpanel
     {
-        if (count($arguments) > 0)
-            $arguments = $arguments[0];
-        return $this->runQuery($function, $arguments);
+        $this->username = $username;
+        $this->password = $password;
+        return $this;
     }
 
     /**
      * checking options for 'username', 'password', and 'host'. If they are not set, some exception will be thrown.
-     *
      * @param array $options list of options that will be checked
-     *
-     * @return self
      * @throws \InvalidArgumentException
      * @since v1.0.0
      */
-    private function checkOptions($options)
+    private function checkOptions(array $options): Cpanel
     {
         if (empty($options['username'])) {
             throw new \InvalidArgumentException('Username is not set', 2301);
@@ -142,139 +124,65 @@ class Cpanel implements CpanelInterface
     }
 
     /**
-     * set authorization for access.
-     * It only set 'username' and 'password'.
+     * Magic method who will call the CPanel/WHM Api.
      *
-     * @param string $username Username of your whm server.
-     * @param string $password Password or long hash of your whm server.
+     * @param string $function function name that will be called
+     * @param array $arguments parameter that should be passed when calling API function
      *
-     * @return object return as self-object
+     * @return array result of called functions
      *
      * @since v1.0.0
      */
-    public function setAuthorization($username, $password)
+    public function __call(string $function, array $arguments)
     {
-        $this->username = $username;
-        $this->password = $password;
-
-        return $this;
+        if (count($arguments) > 0)
+            $arguments = $arguments[0];
+        return $this->runQuery($function, $arguments);
     }
 
     /**
-     * set API Host.
+     * The executor. It will run API function and get the data.
      *
-     * @param string $host Host of your whm server.
+     * @param string $action function name that will be called.
+     * @param array $arguments list of parameters that will be attached.
+     * @param bool $throw defaults to false, if set to true rethrow every exception.
      *
-     * @return object return as self-object
+     * @return array results of API call
+     *
+     * @throws RuntimeException|ClientException
      *
      * @since v1.0.0
      */
-    public function setHost($host)
+    protected function runQuery(string $action, array $arguments = [], bool $throw = false): array
     {
-        $this->host = $host;
-
-        return $this;
+        $client = $this->getClient();
+        try {
+            $response = $this->getResponse($client, $action, $arguments);
+        } catch (ClientException $e) {
+            if ($throw) {
+                throw $e;
+            }
+            $response = $e->getResponse();
+        }
+        $json = (string)$response->getBody();
+        return $this->jsonDecode($json);
     }
 
-    /**
-     * set Authentication Type.
-     *
-     * @param string $auth_type Authentication type for calling API.
-     *
-     * @return object return as self-object
-     *
-     * @since v1.0.0
-     */
-    public function setAuthType($auth_type)
+    protected function getClient(): Client
     {
-        $this->auth_type = $auth_type;
-
-        return $this;
+        return $this->client ?: new Client();
     }
 
-    /**
-     * set some header.
-     *
-     * @param string $name key of header you want to add
-     * @param string $value value of header you want to add
-     *
-     * @return object return as self-object
-     *
-     * @since v1.0.0
-     */
-    public function setHeader($name, $value = '')
+    protected function getResponse(Client $client, string $action, array $arguments = []): ResponseInterface
     {
-        $this->headers[$name] = $value;
-
-        return $this;
-    }
-
-    /**
-     * set timeout.
-     *
-     * @param $timeout
-     *
-     * @return object return as self-object
-     *
-     * @since v1.0.0
-     */
-    public function setTimeout($timeout)
-    {
-        $this->timeout = (int) $timeout;
-
-        return $this;
-    }
-
-    /**
-     * set connection timeout.
-     *
-     * @param $connection_timeout
-     *
-     * @return object return as self-object
-     *
-     * @since v1.0.0
-     */
-    public function setConnectionTimeout($connection_timeout)
-    {
-        $this->connection_timeout = (int) $connection_timeout;
-
-        return $this;
-    }
-
-    /**
-     * get username.
-     *
-     * @return string return username
-     *
-     * @since v1.0.0
-     */
-    public function getUsername()
-    {
-        return $this->username;
-    }
-
-    /**
-     * get authentication type.
-     *
-     * @return string get authentication type
-     *
-     * @since v1.0.0
-     */
-    public function getAuthType()
-    {
-        return $this->auth_type;
-    }
-
-    /**
-     * get password or long hash.
-     *
-     * @return string get password or long hash
-     *
-     * @since v1.0.0
-     */
-    public function getPassword()
-    {
-        return $this->password;
+        $host = $this->getHost();
+        return $client->post($host . '/json-api/' . $action, [
+            'headers' => $this->createHeader(),
+            'verify' => false,
+            'query' => $arguments,
+            'timeout' => $this->getTimeout(),
+            'connect_timeout' => $this->getConnectionTimeout()
+        ]);
     }
 
     /**
@@ -284,33 +192,21 @@ class Cpanel implements CpanelInterface
      *
      * @since v1.0.0
      */
-    public function getHost()
+    public function getHost(): string
     {
         return $this->host;
     }
 
     /**
-     * get timeout.
+     * set API Host.
      *
-     * @return integer timeout of the Guzzle request
-     *
+     * @param string $host Host of your whm server.
      * @since v1.0.0
      */
-    public function getTimeout()
+    public function setHost(string $host): Cpanel
     {
-        return $this->timeout;
-    }
-
-    /**
-     * get connection timeout.
-     *
-     * @return integer connection timeout of the Guzzle request
-     *
-     * @since v1.0.0
-     */
-    public function getConnectionTimeout()
-    {
-        return $this->connection_timeout;
+        $this->host = $host;
+        return $this;
     }
 
     /**
@@ -330,50 +226,123 @@ class Cpanel implements CpanelInterface
         if ('hash' == $auth_type) {
             $headers['Authorization'] = 'WHM ' . $username . ':' . preg_replace("'(\r|\n|\s|\t)'", '', $this->getPassword());
         } elseif ('password' == $auth_type) {
-            $headers['Authorization'] = 'Basic ' . base64_encode($username . ':' .$this->getPassword());
+            $headers['Authorization'] = 'Basic ' . base64_encode($username . ':' . $this->getPassword());
         }
         return $headers;
     }
 
     /**
-     * The executor. It will run API function and get the data.
+     * get username.
+     * @return string return username
+     * @since v1.0.0
+     */
+    public function getUsername(): string
+    {
+        return $this->username;
+    }
+
+    /**
+     * get authentication type.
+     * @return string get authentication type
+     * @since v1.0.0
+     */
+    public function getAuthType(): string
+    {
+        return $this->auth_type;
+    }
+
+    /**
+     * set Authentication Type.
      *
-     * @param string $action function name that will be called.
-     * @param array $arguments list of parameters that will be attached.
-     * @param bool   $throw defaults to false, if set to true rethrow every exception.
+     * @param string $auth_type Authentication type for calling API.
+     * @since v1.0.0
+     */
+    public function setAuthType(string $auth_type): Cpanel
+    {
+        $this->auth_type = $auth_type;
+        return $this;
+    }
+
+    /**
+     * get password or long hash.
+     * @return string get password or long hash
+     * @since v1.0.0
+     */
+    public function getPassword(): string
+    {
+        return $this->password;
+    }
+
+    /**
+     * get timeout.
      *
-     * @throws RuntimeException|ClientException
-     *
-     * @return array results of API call
+     * @return integer timeout of the Guzzle request
      *
      * @since v1.0.0
      */
-    protected function runQuery($action, $arguments = [], $throw = false)
+    public function getTimeout(): int
     {
-        $client = $this->getClient();
-        try {
-            $response = $this->getResponse($client, $action, $arguments);
-        } catch (ClientException $e) {
-            if ($throw) {
-                throw $e;
-            }
-            $response = $e->getResponse();
+        return $this->timeout;
+    }
+
+    /**
+     * set timeout.
+     * @since v1.0.0
+     */
+    public function setTimeout(int $timeout): Cpanel
+    {
+        $this->timeout = $timeout;
+        return $this;
+    }
+
+    /**
+     * get connection timeout.
+     *
+     * @return integer connection timeout of the Guzzle request
+     *
+     * @since v1.0.0
+     */
+    public function getConnectionTimeout(): int
+    {
+        return $this->connection_timeout;
+    }
+
+    /**
+     * set connection timeout.
+     * @since v1.0.0
+     */
+    public function setConnectionTimeout(int $connection_timeout): Cpanel
+    {
+        $this->connection_timeout = $connection_timeout;
+        return $this;
+    }
+
+    protected function jsonDecode(string $json): array
+    {
+        if (($decodedBody = json_decode($json, true)) === false) {
+            throw new RuntimeException(json_last_error_msg(), json_last_error());
         }
-        $json = (string)$response->getBody();
-        return $this->jsonDecode($json);
+        return $decodedBody;
+    }
+
+    /**
+     * set some header.
+     *
+     * @param string $name key of header you want to add
+     * @param string $value value of header you want to add
+     * @since v1.0.0
+     */
+    public function setHeader(string $name, string $value = ''): Cpanel
+    {
+        $this->headers[$name] = $value;
+
+        return $this;
     }
 
     /**
      * Use a cPanel API
-     *
-     * @param $module
-     * @param $function
-     * @param $username
-     * @param array $params
-     * @return mixed
-     * @throws \Exception
      */
-    public function cpanel($module, $function, $username, $params = array())
+    public function cpanel($module, $function, $username, array $params = []): array
     {
         $action = 'cpanel';
         $params = array_merge($params, [
@@ -383,22 +352,15 @@ class Cpanel implements CpanelInterface
             'cpanel_jsonapi_user' => $username,
         ]);
 
-        $response = $this->runQuery($action, $params);
-        return $response;
+        return $this->runQuery($action, $params);
     }
 
     /**
      * Use cPanel API 1 or use cPanel API 2 or use UAPI.
      *
      * @param $api (1 = cPanel API 1, 2 = cPanel API 2, 3 = UAPI)
-     * @param $module
-     * @param $function
-     * @param $username
-     * @param array $params
-     * @return mixed
-     * @throws \Exception
      */
-    public function execute_action($api, $module, $function, $username, $params = array())
+    public function execute_action($api, $module, $function, $username, array $params = []): array
     {
         $action = 'cpanel';
         $params = array_merge($params, [
@@ -407,46 +369,6 @@ class Cpanel implements CpanelInterface
             'cpanel_jsonapi_func' => $function,
             'cpanel_jsonapi_user' => $username,
         ]);
-        $response = $this->runQuery($action, $params);
-
-        return $response;
-    }
-
-    /**
-     * @param Client $client
-     * @param string $action
-     * @param array $arguments
-     * @return ResponseInterface
-     */
-    protected function getResponse(Client $client, $action, array $arguments = [])
-    {
-        $host = $this->getHost();
-        return $client->post($host . '/json-api/' . $action, [
-            'headers' => $this->createHeader(),
-            'verify' => false,
-            'query' => $arguments,
-            'timeout' => $this->getTimeout(),
-            'connect_timeout' => $this->getConnectionTimeout()
-        ]);
-    }
-
-    /**
-     * @return Client
-     */
-    protected function getClient()
-    {
-        return $this->client ?: new Client();
-    }
-
-    /**
-     * @param string $json
-     * @return mixed
-     */
-    protected function jsonDecode($json)
-    {
-        if (($decodedBody = json_decode($json, true)) === false) {
-            throw new RuntimeException(json_last_error_msg(), json_last_error());
-        }
-        return $decodedBody;
+        return $this->runQuery($action, $params);
     }
 }

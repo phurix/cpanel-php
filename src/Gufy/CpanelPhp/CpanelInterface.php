@@ -23,33 +23,33 @@ interface CpanelInterface
      * @param string $username Username of your whm server.
      * @param string $password Password or long hash of your whm server.
      *
-     * @return object return as self-object
+     *
      *
      * @since v1.0.0
      */
-    public function setAuthorization($username, $password);
+    public function setAuthorization(string $username, string $password);
 
     /**
      * set API Host.
      *
      * @param string $host Host of your whm server.
      *
-     * @return object return as self-object
+     *
      *
      * @since v1.0.0
      */
-    public function setHost($host);
+    public function setHost(string $host);
 
     /**
      * set Authentication Type.
      *
      * @param string $auth_type Authentication type for calling API.
      *
-     * @return object return as self-object
+     *
      *
      * @since v1.0.0
      */
-    public function setAuthType($auth_type);
+    public function setAuthType(string $auth_type);
 
     /**
      * set some header.
@@ -57,11 +57,11 @@ interface CpanelInterface
      * @param string $name key of header you want to add
      * @param string $value value of header you want to add
      *
-     * @return object return as self-object
+     *
      *
      * @since v1.0.0
      */
-    public function setHeader($name, $value = '');
+    public function setHeader(string $name, string $value = '');
 
     /**
      * get username.
@@ -70,7 +70,7 @@ interface CpanelInterface
      *
      * @since v1.0.0
      */
-    public function getUsername();
+    public function getUsername(): string;
 
     /**
      * get authentication type.
@@ -79,7 +79,7 @@ interface CpanelInterface
      *
      * @since v1.0.0
      */
-    public function getAuthType();
+    public function getAuthType(): string;
 
     /**
      * get password or long hash.
@@ -88,7 +88,7 @@ interface CpanelInterface
      *
      * @since v1.0.0
      */
-    public function getPassword();
+    public function getPassword(): string;
 
     /**
      * get host of your whm server.
@@ -97,17 +97,10 @@ interface CpanelInterface
      *
      * @since v1.0.0
      */
-    public function getHost();
+    public function getHost(): string;
 
     /**
      * Use a cPanel API
-     *
-     * @param $module
-     * @param $function
-     * @param $username
-     * @param array $params
-     * @return mixed
-     * @throws \Exception
      */
-    public function cpanel($module, $function, $username, $params = array());
+    public function cpanel($module, $function, $username, array $params = []);
 }
