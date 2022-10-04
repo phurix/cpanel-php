@@ -126,16 +126,11 @@ class Cpanel implements CpanelInterface
     /**
      * Magic method who will call the CPanel/WHM Api.
      *
-     * @param string $function function name that will be called
-     * @param array $arguments parameter that should be passed when calling API function
-     *
-     * @return array result of called functions
-     *
      * @since v1.0.0
      */
-    public function __call(string $function, array $arguments = [])
+    public function __call(string $function, array $arguments = [], bool $throw = true): array
     {
-        return $this->runQuery($function, $arguments);
+        return $this->runQuery($function, $arguments, $throw);
     }
 
     /**
