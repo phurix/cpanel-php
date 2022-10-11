@@ -128,9 +128,9 @@ class Cpanel implements CpanelInterface
      *
      * @since v1.0.0
      */
-    public function __call(string $function, array $arguments = [], bool $throw = true): array
+    public function __call(string $function, array $arguments = []): array
     {
-        return $this->runQuery($function, $arguments, $throw);
+        return $this->runQuery($function, $arguments, true);
     }
 
     /**
